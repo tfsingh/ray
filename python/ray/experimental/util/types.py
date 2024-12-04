@@ -17,3 +17,11 @@ class ReduceOp(_CollectiveOp):
 
     def __str__(self):
         return f"{self.name.lower()}"
+
+@PublicAPI
+class AllGatherOp(_CollectiveOp):
+    # Single operation type since allgather just concatenates tensors
+    CONCAT = 0
+
+    def __str__(self):
+        return "allgather"

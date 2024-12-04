@@ -141,6 +141,22 @@ class GPUCommunicator(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def allgather(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+    ) -> None:
+        """
+        Collectively gather tensors from all processes in the group and concatenate them.
+
+        Args:
+            send_buf: The input torch.tensor to allreduce. It should already be
+                on this actor's default device.
+            recv_buf: The output torch.tensor to store the allgather result.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     def destroy() -> None:
         """
         Destroy the GPU communicator.

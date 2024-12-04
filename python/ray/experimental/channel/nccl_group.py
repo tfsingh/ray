@@ -280,6 +280,31 @@ class _NcclGroup(GPUCommunicator):
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
 
+    def allgather(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+    ):
+        if self._closed:
+            raise RayChannelError("NCCL group has been destroyed.")
+
+        self._comm.allGather(
+            self.nccl_util.get_tensor_ptr(send_buf),
+            self.nccl_util.get_tensor_ptr(recv_buf),
+            send_buf.numel(),
+            self.nccl_util.get_nccl_tensor_dtype(send_buf),
+            self._cuda_stream.ptr,
+        )
+
+        # Buffer values are undefined if NCCL ops are aborted. Therefore, we
+        # need to synchronize here and check that the channel is still open to
+        # ensure that the receive buffer is valid.
+        # TODO(swang): Avoid CUDA synchronization.
+        # TODO(wxdeng): Use check_async_error.
+        self._cuda_stream.synchronize()
+        if self._closed:
+            raise RayChannelError("NCCL group has been destroyed.")
+
     @property
     def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
         return self._recv_stream

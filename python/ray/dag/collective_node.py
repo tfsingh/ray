@@ -12,7 +12,7 @@ from ray.dag.constants import COLLECTIVE_OPERATION_KEY
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.torch_tensor_nccl_channel import _init_nccl_group
 from ray.experimental.channel.torch_tensor_type import GPUCommunicator, TorchTensorType
-from ray.experimental.util.types import _CollectiveOp, ReduceOp
+from ray.experimental.util.types import _CollectiveOp, ReduceOp, AllGatherOp
 from ray.util.annotations import DeveloperAPI
 
 
@@ -61,8 +61,8 @@ class _CollectiveOperation:
             )
 
         self._op = op
-        if not isinstance(self._op, ReduceOp):
-            raise NotImplementedError("Only ReduceOp is implemented")
+        if not isinstance(self._op, (ReduceOp, AllGatherOp)):
+            raise NotImplementedError("Only ReduceOp and AllGatherOp are implemented")
         if transport is None:
             transport = TorchTensorType.NCCL
         self._type_hint = TorchTensorType(transport=transport, _direct_return=True)
@@ -123,9 +123,21 @@ class _CollectiveOperation:
         if not isinstance(send_buf, torch.Tensor):
             raise ValueError("Expected a torch tensor")
         nccl_group = self.get_nccl_group()
-        recv_buf = torch.empty_like(send_buf)
-        nccl_group.allreduce(send_buf, recv_buf, self._op)
-        return recv_buf
+
+        if isinstance(self._op, ReduceOp):
+            recv_buf = torch.empty_like(send_buf)
+            nccl_group.allreduce(send_buf, recv_buf, self._op)
+            return recv_buf
+        elif isinstance(self._op, AllGatherOp):
+            # For allgather, output size is world_size times the input size
+            world_size = nccl_group.get_world_size()
+            recv_buf = torch.empty(
+                (world_size,) + tuple(send_buf.shape),
+                dtype=send_buf.dtype,
+                device=send_buf.device
+            )
+            nccl_group.allgather(send_buf, recv_buf)
+            return recv_buf
 
 
 @DeveloperAPI
